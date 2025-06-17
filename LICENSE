@@ -1,0 +1,25 @@
+MIT License with original attribution to Robert C. Martin
+MIT License
+
+Copyright (c) 2025 Sinan Karasu
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the “Software”), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software...
+
+[standard MIT continues]
+
+---
+
+ORIGINAL NOTICE:
+
+This software is based in part on the original SMC (State Machine Compiler)
+by Robert C. Martin, released under the following terms:
+
+"This software is free. Use it for whatever you like. I provide no warranty
+or guarantee of any kind. Use the software at your own risk. If you have any
+ideas for improvements... 'just leave a message, maybe I'll call.'"
+— Robert Martin, R.C.M. Consulting, 1993
+
