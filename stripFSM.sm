@@ -1,0 +1,43 @@
+FSMName StripFSM
+Context StripperContext
+Initial outside
+Header  stContext.h
+Version $Id: stripFSM.sm,v 1.4 1993/06/09 16:25:03 rmartin Exp $
+
+{
+outside{
+	Slash			startingSlash	{}
+	Star			outside			PutChar
+	EOL				outside			PutChar
+	Other			outside			PutChar
+	}
+
+startingSlash{
+	Slash			secondSlash		{}
+	Star			starAfterSlash	{}
+	EOL				outside			{PutSlash PutChar}
+	Other			outside			{PutSlash PutChar}
+	}
+
+secondSlash{
+	EOL				outside			PutChar
+	Other			secondSlash		{}
+	Star			secondSlash		{}
+	Slash			secondSlash		{}
+	}
+
+(inStarComment){
+	Other			starAfterSlash	{}
+	EOL				starAfterSlash	{}
+	}
+starAfterSlash : inStarComment {
+	Star			startingStar	{}
+	Slash			starAfterSlash	{}
+	}
+
+startingStar : inStarComment {
+	Slash			outside			{}
+	Star			startingStar  	{}
+	}
+}
+

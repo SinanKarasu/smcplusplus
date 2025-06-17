@@ -1,0 +1,659 @@
+			 The Care and Feeding
+				  of
+			The State Map Compiler
+				   
+			   by Robert Martin
+			     4 June, 1993
+				   
+			       ABSTRACT
+
+
+
+         This  paper describes  'smc', a program which compiles
+         state  transition  tables  into C++  classes.   Finite
+         State  Machines  are an  important  part  of  computer
+         application  analysis  and  design.   However,   their
+         expression  in  "computer  code"  is often  muddied by
+         artifacts  of the language  and the application.   The
+         state map compiler allows  the control elements  of an
+         application to be clearly and succinctly  described in
+         isolation from the program code.
+
+
+			   The Care and Feeding
+				  of the
+			    State Map Compiler
+				     
+			     by Robert Martin
+			  R.C.M. Consulting Inc.
+			    rmartin@rcmcon.com
+			       4 June, 1993
+
+Finite state machines are an important part of the analysis and design of
+computer applications.  A great many applications can be described by using one
+or more FSMs.  When the control model of a program is expressed as an FSM, it
+makes it easier to search for error cases and alternatives.  
+
+Finite State Machines are described by tables called "State Maps" or "State
+Transition Tables".  A typical State map looks something like this:
+
+              +---------------------------------------------------+
+              |      Subway Turnstyle State Transition Table      |
+              +--------------+------------+------------+----------+
+              |Current State | Transition | Next State |  Actions |
+              +--------------+------------+------------+----------+
+              |Locked        | Coin       | Unlocked   |  Unlock  |
+              |              +------------+------------+----------+
+              |              | Pass       | Locked     |   Alarm  |
+              +--------------+------------+------------+----------+
+              |Unlocked      | Pass       | Locked     |   Lock   |
+              |              +------------+------------+----------+
+              |              | Coin       | Unlocked   | ThankYou |
+              +--------------+------------+------------+----------+
+
+This State Map examines the control model of a Subway Turnstyle.  The
+machine can have two states (Locked and Unlocked) and accepts two events.
+The Coin event indicates that someone has deposited a coin.  The Pass event
+indicates that someone has "passed through" the turnstyle.  There are also
+four actions or behaviors that the machine invokes.  It can lock the
+turnstyle, unlock the turnstyle, sound an alarm, and thank the user for
+extra money.
+
+The State map is interpreted in the following manner.  When the turnstyle
+is in the Locked state, and a Coin event is received, the machine
+transitions to the Unlocked state and invokes the Unlock behavior.  On the
+other hand, if the Pass event is received, it indicates that someone has
+forced their way through the turnstyle, so the machine rings an alarm.
+
+When the turnstyle is in the unlocked state and it receives a Pass event,
+then the machine transitions back to the Locked state, and invokes the Lock
+action.  However, if the Coin event is received in the Unlocked state, then
+someone has deposited extra money into the turnstyle, and the machine,
+politely, says "Thank You".
+
+Now imagine a C++ class which implements the behaviors of the turnstyle:
+
+----------------------------tscontext.h------------------------------
+
+	Class TurnStyleContext
+	{
+      	  public:
+	    void Lock();
+            void Unlock();
+            void Alarm();
+            void ThankYou();
+	};
+------------------------------------------------------------------
+
+This is a class that you write in order to capture all the behavior
+demanded by the state machine.  When you call the Lock member function, it
+locks the turnstyle.  When you call the Alarm member function, it sounds an
+alarm.  Every action of the state machine is present as a member function
+of this class.
+
+Our state machine can be implemented by feeding the following text file
+into smc...
+
+---------------------------turnstyle.sm--------------------------------
+Context TurnStyleContext // the name of the context class
+FSMName TurnStyle        // the name of the FSM to create
+Header  tscontext.h      // the name of the header file of the context class
+{
+	Locked    Coin    Unlocked    Unlock
+	Locked    Pass    Locked      Alarm
+	Unlocked  Coin    Unlocked    Thankyou
+	Unlocked  Pass    Locked      Lock
+}
+------------------------------------------------------------------------
+
+SMC outputs two files.  turnStyle.cc and turnStyle.h.  These implement a
+class whose name is: TurnStyle, from the FSMName above.  The definition of
+this class, from turnStyle.h, is:
+
+-------------------------turnStyle.h (abbreviated)----------------------
+class TurnStyle : public TurnStyleContext 
+{
+  public:
+    static TurnStyleUnlockedState UnlockedState;
+    static TurnStyleLockedState LockedState;
+    void Pass() {itsState->Pass(*this);}
+    void Coin() {itsState->Coin(*this);}
+    void SetState(TurnStyleState& theState) {itsState=&theState;}
+    TurnStyleState& GetState() const {return *itsState;};
+  private:
+    TurnStyleState* itsState;
+};
+-------------------------------------------------------------------------
+
+Notice, first, that the class TurnStyle inherits from the TurnStyleContext.
+So it has all the behaviors that we need.  Also notice that it declares
+member functions for the event codes.  There is a member function for Pass
+and one for Event.  Finally notice that two static members have been
+declared, one for each state that the machine can be in.  These are derived
+from the common base state: TurnStyleState.  The state that the machine is
+in is determined by which of these static members the 'itsState' member
+points at.
+
+Using the class TurnStyle, we can write our turnstyle application as
+follows. 
+
+----------------------turnstylemain.cc-------------------------------
+
+#include "turnStyle.h"
+
+main()
+{
+  TurnStyle fsm;
+  fsm.SetState(TurnStyle::LockedState);  // initial state;
+  fsm.Lock();  // Make sure the gate is locked.
+
+  for(;;)
+  {
+    if (a coin has been dropped) fsm.Coin();
+    if (the user passes) fsm.Pass;
+  }
+}
+----------------------------------------------------------------------
+
+Notice that all the control has been externalized.  All the application
+does is look for events and feed them into the FSM.  The FSM takes the
+events invokes the correct behaviors inherited from TurnStyleContext.
+
+How does all this magic work?  Lets look at some more of turnStyle.h
+
+------------------------ excerpts from turnStyle.h ----------------
+class TurnStyleState {
+public:
+
+  virtual const char* StateName() const = 0;
+  virtual void Pass(TurnStyle& s);
+  virtual void Coin(TurnStyle& s);
+};
+-------------------------------------------------------------------
+
+This class represents the base class for all states.  Notice that it has
+virtual functions for each event; i.e. a Pass and Coin function.  The
+StateName function is there as a debugging and error handling tool.  
+
+Next look at the definition of the two states.
+
+---------------------------------------------------------
+class TurnStyleUnlockedState : public TurnStyleState {
+public:
+  virtual const char* StateName() const
+  {return("Unlocked");};
+  virtual void Pass(TurnStyle&);
+  virtual void Coin(TurnStyle&);
+};
+
+class TurnStyleLockedState : public TurnStyleState {
+public:
+  virtual const char* StateName() const
+  {return("Locked");};
+  virtual void Pass(TurnStyle&);
+  virtual void Coin(TurnStyle&);
+};
+--------------------------------------------------------------------
+
+These two classes declare the virtual functions again, and implement the
+StateName function.   Notice that a reference to TurnStyle is passed into
+each event.  What do the virtual functions do?   Here's an example.
+
+--------------------- excerpt from turnStyle.cc ----------------------
+void TurnStyleLockedState::Coin(TurnStyle& s) {
+  s.SetState(TurnStyle::UnlockedState);
+  s.Unlock();
+}
+-----------------------------------------------------------------------
+
+When the Coin function of the TurnStyleLockedState class is invoked, it
+will change the state of the FSM to UnlockedState and will invoke the
+Unlock function of the TurnStyle object.
+
+You see?  The virtual functions of each state object change the state and
+invoke the appropriate behavior.  
+
+Now lets trace this from the beginning.   Lets say that the FSM is in the
+Locked state.  Then the itsState member of the TurnStyle class will point
+to the LockedState object which is a static instance of the
+TurnStyleLockedState class.  When the application detects that a coin has
+been deposited, it calls the Coin function of the TurnStyle object.  This
+function in turn invokes:  itsState->Coin(this), which calls the Coin
+function of the TurnStyleLockedState class.  This function changes the
+state and invokes the appropriate behavior as previously described.
+
+The rest of the implemenations of the virtual functions are described
+below.
+
+----------------------- more excerpts from turnStyle.cc -----------------
+void TurnStyleUnlockedState::Pass(TurnStyle& s) {
+  s.SetState(TurnStyle::LockedState);
+  s.Lock();
+}
+void TurnStyleUnlockedState::Coin(TurnStyle& s) {
+  s.SetState(TurnStyle::UnlockedState);
+  s.Thankyou();
+}
+void TurnStyleLockedState::Pass(TurnStyle& s) {
+  s.SetState(TurnStyle::LockedState);
+  s.Alarm();
+}
+-------------------------------------------------------------------------
+
+The class TurnStyleState also implements the virtual event functions.
+These implemenations are there in the unlikely case that the application
+declares an event that the current state cannot understand.  In this case
+the default implementation from TurnStyleState will be invoked.  
+
+--------------------- final exerpt from turnStyle.cc -----------------
+void TurnStyleState::Pass(TurnStyle& s)
+  {s.FSMError("Pass", s.GetState().StateName());}
+
+void TurnStyleState::Coin(TurnStyle& s)
+  {s.FSMError("Coin", s.GetState().StateName());}
+----------------------------------------------------------------------
+
+Notice that these functions expect that the TurnStyle class has a member
+function entitled "FSMError" which takes two char* arguments.  This member
+function is not written by SMC.  You must supply it in your base context
+class.  Thus we should rewrite the base context class as follows.
+
+------------------------tscontext.h---------------------------------
+	Class TurnStyleContext
+	{
+      	  public:
+	    void Lock();
+            void Unlock();
+            void Alarm();
+            void ThankYou();
+            void FSMError(char*, char*);
+	};
+--------------------------------------------------------------------
+
+The first argument will be the name of the event.  The second argument will
+be the name of the current state.  Detecting such an error is a serious
+thing, and should probably result in an abort.
+
+**************
+* SMC SYNTAX *
+**************
+
+The State Map source file is a straight ascii file.  It is
+meant to be typed by a human.  Comments can appear enclosed in
+"/*" and "*/", or after a "//" to the end of a line.
+
+/* this is a comment */
+
+// so is this
+
+States, events and actions are given names.  These names must
+begin with an alphabetic character, and every subsequent character
+must be alphabetic, numeric or a "." (dot), or "_" (underscore).
+
+************************************
+* KEYWORDS  and HEADER INFORMATION *
+************************************
+
+There are keywords which cannot be used as state, transition or Action
+names.  These are: FSMName, Header, Context, Version, Initial or any
+upper/lower case variation on these names.
+
+The header information is specified by using the keywords.  They specify
+contextual information that the parser needs to properly build the C++
+source files.  The keywords can appear in any order, but must be the first
+things in the file, other than comments.
+
+FSMName
+
+The word following FSMName specifies the name of the statemap.  This name
+is used to create the two output files.  For example:
+
+FSMName MyStateMap
+
+Will cause the two output files of the parser to be "myStateMap.h" and
+"myStateMap.cc".  Furthermore the class for the Finite State Machine will
+be named "MyStateMap".
+
+Context
+
+The name following this keyword specifies the class name of the context
+data structure.  This is the data structure that encapsulates all the
+Finite State Machine's behaviors, and from which the Finite State Machine
+will be derived.  Remember that this class needs member functions for
+each of the Actions in the FSM, and must also have an FSMError(char*,
+char*) function.
+
+Initial
+
+The name following this keyword is taken to be the initial state of
+the finite state machine.  The default constructor of the FSMName
+class is generated to set the initial state accordingly.  This keyword
+is optional.  If left out, then no initial state is set; and the program
+that declares FSMName objects must set their initial state explicitly.
+
+Version
+
+Takes all the text following the keyword and puts it in a static char array
+in the .cc output file.  This can be used for SCCS id strings which will be
+compiled into the object files and therefore accessible via "sccs what"
+
+e.g.  Version  3.4 TurnStyle 6/4/93 by rcm
+
+This will put the following line into the .cc file generated by smc
+
+static char _versID[] = "Version 3.4 TurnStyle 6/4/93 by rcm";
+
+Header
+
+You may have many of these statements in your statemap file.  Each
+one specifies a header file that will be "#included" into the 
+.h output file.  One, at least, is necessary.  It must specify the
+header file which contains the definition of the class named by the Context
+keyword. 
+
+**********************
+* TRANSITION ENTRIES *
+**********************
+
+Following the initial header keyword must be an open brace, followed by a
+number of transition entries, followed by a final closing brace.
+
+keywords { 0(transition entry)n }
+
+Transition entries take the form:
+
+<currentState> <event> <nextState> <action>
+
+(The angle brakets are not part of the syntax.)
+
+Actions may be grouped so that a single transition will cause several
+actions to be performed.  This form is as follows:
+
+<currentState> <event> <nextState> { <action> <action> ... }
+
+Sometimes a transition will elicit no action.  This can be specified
+in the following manner:
+
+<currentState> <event> <nextState> { }
+
+Often there may be several transitions out of a single state.  You
+can use the previously defined syntax by adding several transition
+entries which all have the same <currentState>.  Or you can group
+transitions within a single state with the following syntax:
+
+<currentState> { <event> <nextState> <action>
+                 <event> <nextState> <action> ...
+               }
+
+*************
+* SUBSTATES *
+*************
+
+Sometimes you will find that certain states are nearly identical in terms
+of the way that they process events.  For example:
+
+Angry { 
+            Ouch    Angry     Cry
+            Tickle  Annoyed   Laugh
+            Stroke  Annoyed   Withdraw
+      }
+
+Sad  {
+            Ouch    Angry     Cry
+            Tickle  Annoyed   Laugh
+            Stroke  Pleased   StrokeBack
+     }
+
+These two states are identical except for the way they process strokes.
+It seems a shame to have to recode the Ouch and Tickle transitions for both
+states.  A substate is a state which inherits the behavior from a super
+state.  In SMC we can code this as:
+
+(Emotional) {
+               Ouch   Angry   Cry
+               Tickle Annoyed Laugh
+            }
+
+Angry : Emotional  Stroke  Annoyed  Withdraw
+Sad   : Emotional  Stroke  Pleased  StrokeBack
+
+The parentheses denote a super state, and the colon denotes state
+inheritance.  Angry is a sub-state of Emotional.  Emotional is a super
+state.
+
+Super states cannot be used as the target state of a transition.  i.e.
+
+	Happy  Hit  Emotional  Pout
+
+Is not a valid transition, because Emotional is a superstate being used as
+the target of a transition.
+
+Super states can also be substates:
+
+(X) : Y {...}
+
+Thus you can create a huge tree of states and their substates.
+
+*******************************
+* ISSUING EVENTS FROM ACTIONS *
+*******************************
+
+Sometimes, it is nice to be able to issue an event from within an
+action function.  For example:  You have an action function named
+Open.  It opens a file.  If the file opens correctly, you would like
+to issue the "OK" event.  But if the file fails to open you would like
+to issue the "Fail" event.  
+
+Unfortunately, the action functions are members of the context class,
+from which the FSM is derived.  The context class does not know
+anything about the Events.  So if you tried to call OK or Fail, the
+compiler would complain.
+
+To solve this problem, make the OK and Fail members of the context
+class virtual.  Then derive a new class from the FSMName class and
+reimplement them there.  Since this new class is derived from the
+finite state machine, it will have knowledge of the Event functions.  
+
+EXAMPLE:
+
+class FileContext
+{
+  public:
+    virtual void Open() = 0;
+};
+-----------------
+Context FileContext
+FSMName FileFSM
+{
+....transitions.
+}
+------------------
+class FileMachine : public FileFSM
+{
+  public:
+    virtual void Open() {if (it works) OK(); else Fail();}
+}
+----------------------------
+
+By using this method, you keep all the code that knows about the FSM
+in the classes derived from the context.  The context knows nothing of
+the FSM (except the FSMError function).
+
+**********************
+* A COMPLETE EXAMPLE *
+**********************
+
+The following is a working example.  The source files should be included in
+the distribution.  This program strips the comments out of C and C++
+programs.
+
+----------------------stContext.h---------------------------
+#ifndef _H_stripperContext
+#define _H_stripperContext
+
+#include <iostream.h>
+
+//
+// This is the context class of the comment stripper.
+// This class knows about the input and output streams,
+// How to read and write chars, and which critical chars to
+// look for in the input stream.
+//
+
+class StripperContext
+{
+private:
+	char itsChar;
+	istream *itsIStream;
+	ostream *itsOStream;
+
+public:
+	StripperContext() { }
+
+    void SetStreams(istream& i, ostream& o)
+    {
+      itsIStream = &i;
+      itsOStream = &o;
+    }
+
+    void FSMError(const char* t, const char* s)
+    {cerr << "Transition error: " << t << " in state " << s << endl;}
+
+	int ReadChar()
+	{
+	  int c;
+	  c = itsIStream->get();
+	  itsChar = c;
+	  return c;
+	}
+	void PutChar() {*itsOStream << itsChar;};
+	void PutSlash() {*itsOStream << '/';};
+};
+
+#endif
+--------------------------------------------------------------------
+
+This class is our Context.  It has certain behaviors.  It can read a
+character from a file, write the remembered character to a file, and write
+a slash to a file.  
+
+The state machine is reasonably complicated.  But small enough to fit on
+one page.  
+
+------------------------stripFSM.sm-------------------------------
+FSMName StripFSM
+Context StripperContext
+Initial outside
+Header  stContext.h
+{
+outside {
+	Slash			startingSlash		{}
+	Star			outside			PutChar
+	EOL			outside			PutChar
+	Other			outside			PutChar
+	}
+
+startingSlash{
+	Slash			secondSlash		{}
+	Star			starAfterSlash		{}
+	EOL			outside			{PutSlash PutChar}
+	Other			outside			{PutSlash PutChar}
+	}
+
+secondSlash{
+	EOL			outside			PutChar
+	Other			secondSlash		{}
+	Star			secondSlash		{}
+	Slash			secondSlash		{}
+	}
+
+(inStarComment){
+	Other			starAfterSlash		{}
+	EOL			starAfterSlash		{}
+	}
+starAfterSlash : inStarComment {
+	Star			startingStar		{}
+	Slash			starAfterSlash		{}
+	}
+
+startingStar : inStarComment {
+	Slash			outside			{}
+	Star			starAfterSlash		{}
+	}
+}
+
+-----------------------------------------------------------------------
+
+The main program is simple:
+
+-------------------------stripper.cc------------------------------------
+//
+// This program implements a C++ comment stripper
+// using the State Map Parser.
+//
+#include <iostream.h>
+#include <stdlib.h>
+#include "stripFSM.h"
+
+main()
+{
+	StripFSM myStripper;
+	myStripper.SetStreams(cin,cout);
+
+	while (cin)
+		switch(myStripper.ReadChar())
+		{
+		    case EOF: exit(0); break;
+			case '/': myStripper.Slash(); break;
+			case '*': myStripper.Star(); break;
+			case '\n': myStripper.EOL(); break;
+			default: myStripper.Other(); break;
+		}
+}
+---------------------------------------------------------------------
+
+That's it.
+
+****************
+* INSTALLATION *
+****************
+
+By now, you have already unpacked the shar archive and read this file.
+There are two makefiles: Makefile and makefile.bcc.  The first is for
+UNIX/LINUX and the second is for BorlandC++ with MKS yacc and Lex.
+
+UNIX
+
+You probably ought to look at that Makefile to ensure that it is compatible
+with your system.  
+
+For Unix, there is nothing particularily tricky going on anywhere,
+so you should be able to type, just, "make".  Some systems don't
+automatically include the yacc/lex libraries in their link path.  If
+you get a link error about "yywrap", then uncomment the specified line
+in the Makefile.
+
+BORLAND C++ & MKS YACC & LEX
+
+Rename the makefile.bcc file to makefile.  Make sure that the
+cllex.lib and clyacc.lib libraries have been created in mks/lib.
+These can be created by editing the borlc.bat file in mks/lib.  Change the MODEL=s line to MODEL=l.  (We want large model, smc uses a lot of dynamic memory).
+Execute this file from DOS to build these libraries.
+
+Now, you should be able to type 'make' and everything should be "keen".
+
+************
+* LEGALESE *
+************
+
+This software is free.  Use if for whatever you like.  I provide no
+warranty or guarantee of any kind.  Use the software at our own risk.  If
+you have any ideas for improvements...  "just leave a message, maybe I'll
+call."
+
+Robert Martin       | Design Consulting   | Training courses offered:
+R.C.M. Consulting   | rmartin@rcmcon.com  |   Object Oriented Analysis
+2080 Cranbrook Rd.  | Tel: (708) 918-1004 |   Object Oriented Design
+Green Oaks IL 60048 | Fax: (708) 918-1023 |   C++
+
+$Id: smc.doc,v 1.5 1993/06/09 17:23:44 rmartin Exp $

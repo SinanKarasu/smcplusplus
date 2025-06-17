@@ -1,0 +1,15 @@
+# macOS system files
+.DS_Store
+
+# objects / executables
+*.o
+*.[0-9][0-9]
+*.dSYM/
+
+# editor/IDE cruft
+*~
+*.swp
+
+# generated FSM output
+*.cc
+*.h
