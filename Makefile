@@ -3,7 +3,7 @@
 
 PROGRAM       = smc
 CXX           = clang++
-CXXFLAGS      = -std=c++17 -g
+CXXFLAGS      = -std=c++20 -g
 LEX           = lex
 YACC          = yacc
 LIBS          = -ll
