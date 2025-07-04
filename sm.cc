@@ -337,6 +337,7 @@ std::ifstream fileStream;
 std::istream* inputStream = nullptr;
 std::string inputPath;
 std::string outputDirectory;
+std::string fileExtension = "cc";
 extern int lineNumber;
 
 void GenStateMap() {
@@ -344,7 +345,7 @@ void GenStateMap() {
     char hName[255];
 
     // Build full paths using std::filesystem::path
-    std::filesystem::path cPath = std::filesystem::path(outputDirectory) / (std::string(GfsmName) + ".cc");
+    std::filesystem::path cPath = std::filesystem::path(outputDirectory) / (std::string(GfsmName) + "." + fileExtension);
     std::filesystem::path hPath = std::filesystem::path(outputDirectory) / (std::string(GfsmName) + ".h");
 
     // Copy paths into old-style char arrays
@@ -450,7 +451,7 @@ enum ExitCode {
 
 
 void printUsage(const std::string& programName) {
-    std::cerr << "Usage: " << programName << " [-o output_directory] [input_file]\n";
+    std::cerr << "Usage: " << programName << " [-o output_directory] [-x cc_file_extension] [input_file]\n";
 }
 
 int parseArguments(int argc, char* argv[]) {
@@ -468,6 +469,17 @@ int parseArguments(int argc, char* argv[]) {
                           << std::quoted(outputDirectory) << "\n";
                 return ARGUMENT_ERROR;
             }
+           } else if (arg == "-x") { 
+            	if (i + 1 >= argc) {
+                std::cerr << "Missing argument for -o\n";
+                return ARGUMENT_ERROR;
+            }
+
+           fileExtension = argv[++i];
+			if (!fileExtension.empty() && fileExtension[0] == '.') {
+				fileExtension = fileExtension.substr(1);  // strip leading dot
+			}
+           
         } else if (!inputStream) {
             fileStream.open(arg);
             if (!fileStream) {

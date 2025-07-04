@@ -9,4 +9,7 @@
 # editor/IDE cruft
 *~
 *.swp
-
+smc
+sml.cc
+smy.cc
+smy.h
